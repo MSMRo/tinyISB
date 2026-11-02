@@ -28,7 +28,7 @@ $$
    - Automatically de-quantizes outputs back to real-world engineering units:
 
 $$
-y = (q - \text{zero\_point}) \times \text{scale}
+y = (q - \mathrm{zero}_{\mathrm{point}}) \times \mathrm{scale}
 $$
 
 4. **Cross-Platform Compatibility**:
