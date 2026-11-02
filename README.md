@@ -22,13 +22,13 @@
    - Accepts raw `float*` inputs and automatically scales/offsets them for quantized `kTfLiteInt8` / `kTfLiteUInt8` models:
 
 $$
-q = \operatorname{clamp}\left(\operatorname{round}\left(\frac{x}{\text{scale}}\right) + \text{zero-point}, -128, 127\right)
+q = \mathrm{clamp}\left( \left\lfloor \frac{x}{\mathrm{scale}} + 0.5 \right\rfloor + \mathrm{zero\_point}, -128, 127 \right)
 $$
 
    - Automatically de-quantizes outputs back to real-world engineering units:
 
 $$
-x = (q - \text{zero-point}) \times \text{scale}
+y = (q - \text{zero\_point}) \times \text{scale}
 $$
 4. **Cross-Platform Compatibility**:
    - **Raspberry Pi Pico (RP2040)**: Dual Cortex-M0+ @ 133 MHz.
