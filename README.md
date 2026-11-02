@@ -20,9 +20,16 @@
    - All inference calculations use registers and stack-allocated primitives.
 3. **Automatic Quantization & De-Quantization**:
    - Accepts raw `float*` inputs and automatically scales/offsets them for quantized `kTfLiteInt8` / `kTfLiteUInt8` models:
-     $$q = \text{clamp}\left(\text{round}\left(\frac{x}{\text{scale}}\right) + \text{zero\_point}, -128, 127\right)$$
+
+$$
+q = \operatorname{clamp}\left(\operatorname{round}\left(\frac{x}{\text{scale}}\right) + \text{zero-point}, -128, 127\right)
+$$
+
    - Automatically de-quantizes outputs back to real-world engineering units:
-     $$x = (q - \text{zero\_point}) \times \text{scale}$$
+
+$$
+x = (q - \text{zero-point}) \times \text{scale}
+$$
 4. **Cross-Platform Compatibility**:
    - **Raspberry Pi Pico (RP2040)**: Dual Cortex-M0+ @ 133 MHz.
    - **Raspberry Pi Pico 2 (RP2350)**: Dual Cortex-M33 with ARMv8-M DSP & FPU @ 150 MHz.
