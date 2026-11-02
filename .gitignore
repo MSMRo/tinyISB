@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Arduino / PlatformIO
+.pio/
+*.hex
+*.bin
+*.elf
