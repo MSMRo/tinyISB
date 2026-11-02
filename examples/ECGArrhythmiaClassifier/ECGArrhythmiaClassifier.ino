@@ -2,48 +2,75 @@
  * @file ECGArrhythmiaClassifier.ino
  * @brief 1D-CNN Real-Time ECG Arrhythmia Classifier using tinyISB
  *
- * Model:
- *  - 1D Convolutional Neural Network (Conv1D -> MaxPool -> Conv1D -> GAP -> Dense)
- *  - Input: 128-sample ECG window (fs = 250 Hz, 512 ms window)
- *  - Output: 3 Cardiac Conditions:
- *      0: Normal Sinus Rhythm (NSR)
- *      1: Tachycardia / Ventricular Arrhythmia
- *      2: Bradycardia / Irregular Heartbeat
- *  - Full INT8 Quantization (weights and activations)
+ * ============================================================================
+ * tinyISB: TinyML Scikit-Learn Inference Engine for Microcontrollers
+ * ============================================================================
  *
- * Cross-Platform Target:
- *  - Raspberry Pi Pico (RP2040) & Pico 2 (RP2350 Cortex-M33)
- *  - Espressif ESP32-S3 (Xtensa LX7) & ESP32-C6 (RISC-V)
- *  - Arduino Nano 33 BLE Sense (nRF52840 Cortex-M4F)
+ * Biosignal Context & Deep Walkthrough:
+ *  - Domain: Real-time Electrocardiography (ECG) cardiac rhythm classification.
+ *  - Signal Conditioning: Simulated Lead-I ECG sampled at 250 Hz (Nyquist-compliant).
+ *  - Temporal Window: 128 consecutive samples (~512 ms window) capturing full P-QRS-T complex.
+ *  - Model Architecture: 1D Convolutional Neural Network (Conv1D -> MaxPool -> Conv1D -> GAP -> Dense).
+ *  - Quantization: Full INT8 post-training quantization (activations and weights).
+ *  - Target Diagnostic Classes:
+ *      0: Normal Sinus Rhythm (NSR) - Healthy physiological cardiac pacing (60-80 BPM).
+ *      1: Tachycardia / Ventricular Arrhythmia - Elevated pacing (> 110 BPM) with narrow QRS.
+ *      2: Bradycardia / Irregular Heartbeat - Abnormally slow pacing (< 50 BPM) with long pauses.
+ *
+ * Target Microcontrollers:
+ *  - Raspberry Pi Pico (RP2040 Dual Cortex-M0+ @ 133 MHz)
+ *  - Raspberry Pi Pico 2 (RP2350 Dual Cortex-M33 with DSP/FPU @ 150 MHz)
+ *  - Espressif ESP32-S3 (Xtensa LX7 @ 240 MHz) & ESP32-C6 (RISC-V @ 160 MHz)
+ *  - Arduino Nano 33 BLE Sense (Nordic nRF52840 Cortex-M4F @ 64 MHz)
  */
 
 #include <Arduino.h>
 
+// ============================================================================
+// 1. Cross-Platform Runtime Provider Selection
+// ============================================================================
+// Automatic macro detection: Arduino Nano 33 BLE uses the official Mbed core,
+// while Raspberry Pi Pico and ESP32 targets use the universal TFLM runtime.
 #if defined(ARDUINO_ARDUINO_NANO33BLE)
   #include <TensorFlowLite.h>
 #else
   #include <tensorflow-runtime-universal.h>
 #endif
 
+// Include tinyISB inference library
 #include <tinyISB.h>
+
+// Include the 16-byte aligned INT8 quantized 1D-CNN model header
 #include "ecg_model_data.h"
 
-// 128 samples at 250 Hz = ~512 ms cardiac window
+// ============================================================================
+// 2. Biosignal Window & Static Tensor Arena Definition
+// ============================================================================
+// 128 raw ECG samples at 250 Hz = ~512 ms cardiac window (sufficient for QRS morphology)
 constexpr size_t kECGWindowSize = 128;
-constexpr size_t kTensorArenaSize = 10 * 1024; // 10 KB arena for 1D-CNN activations
+
+// Static activation buffer allocated in contiguous internal SRAM.
+// 1D-CNN intermediate feature maps (Conv1D and MaxPool activations) require
+// approximately 8-10 KB of working RAM during forward inference.
+// alignas(16) ensures SIMD/vector instruction alignment on ARM Cortex-M and Xtensa.
+constexpr size_t kTensorArenaSize = 10 * 1024; // 10 KB static Tensor Arena
 alignas(16) static uint8_t tensor_arena[kTensorArenaSize];
 
-// tinyISB High-Level Classifier
+// ============================================================================
+// 3. Estimator & Label Definition
+// ============================================================================
+// High-level tinyISB Classifier instance
 static tinyisb::Classifier ecg_classifier;
 
-// Condition labels
+// Semantic diagnostic labels corresponding to model output classes
 static const char* kCardiacLabels[3] = {
     "Normal Sinus Rhythm (NSR)",
     "Tachycardia / Ventricular Arrhythmia",
     "Bradycardia / Irregular Heartbeat"
 };
 
-// Real synthetic ECG segment test vector (Normal Sinus Rhythm)
+// Ground-truth synthetic test vector generated via NeuroKit2 (Normal Sinus Rhythm).
+// Real-world applications would populate this buffer from an analog front-end (e.g. AD8232 or ADS1292).
 static const float kNormalECGSample[kECGWindowSize] = {
      3.2463f,  1.9740f,  0.7536f, -0.3008f, -1.1305f, -1.7035f, -2.0176f, -2.1004f,
     -1.9961f, -1.7483f, -1.4013f, -0.9996f, -0.5841f, -0.1916f,  0.1471f,  0.4109f,
@@ -72,21 +99,36 @@ void setup() {
     Serial.println(F("    tinyISB: 1D-CNN Real-Time ECG Arrhythmia Classifier       "));
     Serial.println(F("=============================================================="));
 
-    // Initialize 1D-CNN with external static arena
+    // ========================================================================
+    // 4. Model Initialization & Operator Resolution
+    // ========================================================================
+    // ecg_classifier.begin() links standard convolutional operators:
+    //  - CONV_2D / CONV_1D, MAX_POOL_2D, MEAN (Global Average Pooling), FULLY_CONNECTED, SOFTMAX.
+    // Maps activations into tensor_arena without dynamic heap allocation.
     Serial.println(F("[tinyISB] Initializing ECG 1D-CNN model..."));
     tinyisb::Status status = ecg_classifier.begin(ecg_model_data, tensor_arena, kTensorArenaSize);
 
     if (status != tinyisb::Status::OK) {
         Serial.print(F("[FATAL] ECG Classifier init error: "));
         Serial.println(tinyisb::status_to_string(status));
+        Serial.println(F("[FATAL] Check if arena size is adequate for 1D-CNN activations."));
         while (true) { delay(1000); }
     }
 
     Serial.println(F("[tinyISB] ECG Model initialized successfully!"));
+
+    // Print tensor shapes: Expected Input [1, 128, 1], Output [1, 3]
     ecg_classifier.print_metadata();
 
+    // ========================================================================
+    // 5. Benchmark Ingestion of Static Cardiac Test Window
+    // ========================================================================
     Serial.println(F("\n--- Evaluating ECG Test Window ---"));
     uint32_t t_start = micros();
+
+    // Ingest 128 float samples. tinyISB converts them to INT8 via:
+    // q = clamp(round(x / scale) + zero_point, -128, 127)
+    // Executes 1D-CNN forward pass and computes argmax
     int pred_class = ecg_classifier.predict(kNormalECGSample, kECGWindowSize);
     uint32_t t_inference = micros() - t_start;
 
@@ -98,6 +140,7 @@ void setup() {
     }
     Serial.print(F("Inference Latency: ")); Serial.print(t_inference); Serial.println(F(" us"));
 
+    // Compute normalized probability distribution using predict_proba()
     Serial.println(F("\nCardiac Condition Probability Distribution:"));
     for (size_t c = 0; c < 3; ++c) {
         float prob = ecg_classifier.predict_proba(kNormalECGSample, c);
@@ -111,7 +154,11 @@ void loop() {
     static uint32_t beat_count = 0;
     beat_count++;
 
-    // Simulate real-time continuous buffering of ECG samples
+    // ========================================================================
+    // 6. Sliding Window Buffer Simulation
+    // ========================================================================
+    // In production firmware, an ADC DMA ISR fills a 128-sample ring buffer.
+    // Here we simulate the dynamic sliding cardiac window with slight phase shift.
     float window_buffer[kECGWindowSize];
     float phase_shift = (float)(beat_count % 16) * 0.05f;
 
@@ -119,11 +166,13 @@ void loop() {
         window_buffer[i] = kNormalECGSample[(i + (beat_count % 8)) % kECGWindowSize] + phase_shift;
     }
 
+    // Measure real-time execution time
     uint32_t t0 = micros();
     int diagnosis = ecg_classifier.predict(window_buffer, kECGWindowSize);
     uint32_t dt = micros() - t0;
     float confidence = ecg_classifier.predict_proba(window_buffer, diagnosis);
 
+    // Clinical telemetry output
     Serial.print(F("[Beat #")); Serial.print(beat_count);
     Serial.print(F("] -> "));
     if (diagnosis >= 0 && diagnosis < 3) {
@@ -132,5 +181,11 @@ void loop() {
     Serial.print(F(" | Confidence: ")); Serial.print(confidence * 100.0f, 1);
     Serial.print(F("% | Exec: ")); Serial.print(dt); Serial.println(F(" us"));
 
+    // Emergency alert thresholding: trigger alert on arrhythmia detection
+    if (diagnosis == 1 || diagnosis == 2) {
+        Serial.println(F("  >>> [EMERGENCY ALERT] Non-Sinus Rhythm detected! <<<"));
+    }
+
+    // Delay between evaluations (1 second)
     delay(1000);
 }
