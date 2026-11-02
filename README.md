@@ -45,31 +45,40 @@ $$
 ## Architecture
 
 ```mermaid
-graph TD
-    App["User Embedded Firmware (Arduino / RTOS)"] --> Estimator["tinyISB Estimator Layer"]
-    Estimator --> Classifier["tinyisb::Classifier (argmax, predict_proba)"]
+flowchart TD
+    Firmware["User Firmware (Arduino Sketch / RTOS)"] --> Preprocessor["Build-Time Macro Dispatch Layer"]
+
+    subgraph DISPATCH["Compile-Time Platform & Runtime Resolution"]
+        Preprocessor -->|defined ARDUINO_ARDUINO_NANO33BLE| TFLM_Official["Official TFLM: TensorFlowLite.h"]
+        Preprocessor -->|RP2040 / RP2350 / ESP32| TFLM_Universal["Universal TFLM: tensorflow-runtime-universal.h"]
+        Preprocessor -->|defined ESP32| ESP_Resolver["UniversalOpResolver (MicroMutableOpResolver: Xtensa / RISC-V)"]
+        Preprocessor -->|ARM Cortex-M| ARM_Resolver["AllOpsResolver (Cortex-M0+ / M4F / M33)"]
+    end
+
+    Firmware --> Estimator["tinyISB Estimator API"]
+    Estimator --> Classifier["tinyisb::Classifier (predict, predict_proba)"]
     Estimator --> Regressor["tinyisb::Regressor (continuous predict)"]
-    Classifier --> Engine["tinyisb::Engine"]
-    Regressor --> Engine
+    Classifier & Regressor --> Engine["tinyisb::Engine"]
     
-    subgraph tinyISB Core
-        Engine --> Quant["Auto Quantizer & De-Quantizer"]
-        Engine --> Resolver["OpResolver (AllOpsResolver / MicroMutableOpResolver)"]
+    subgraph ENGINE_CORE["tinyISB Core Engine (Zero Heap)"]
+        Engine --> AutoQuant["Auto Quantizer & De-Quantizer (float <-> int8)"]
+        ESP_Resolver & ARM_Resolver --> Engine
+        TFLM_Official & TFLM_Universal --> Engine
         Engine --> Interpreter["tflite::MicroInterpreter"]
     end
     
-    subgraph Hardware Memory
-        Arena["Contiguous Static Tensor Arena (alignas(16) uint8_t[])"]
-        ModelData["Flash Model Array (alignas(16) const unsigned char[])"]
+    subgraph HARDWARE_MEM["Hardware Memory Layout"]
+        Arena["Contiguous Static Tensor Arena (alignas(16) uint8_t[]) in RAM"]
+        ModelData["Model C-Array (alignas(16) const unsigned char[]) in Flash"]
     end
     
     Interpreter --> Arena
     Interpreter --> ModelData
     
-    subgraph Target Architectures
-        Engine --> ARM["ARM Cortex-M (RP2040, RP2350, nRF52840)"]
-        Engine --> Xtensa["Xtensa LX7 (ESP32-S3)"]
-        Engine --> RISCV["RISC-V (ESP32-C6)"]
+    subgraph TARGET_CORES["Hardware Targets & Architectures"]
+        Engine --> ARM["ARM Cortex-M (RP2040 M0+, RP2350 M33, nRF52840 M4F)"]
+        Engine --> Xtensa["Xtensa LX7 SIMD (ESP32-S3)"]
+        Engine --> RISCV["32-bit RISC-V (ESP32-C6)"]
     end
 ```
 
@@ -87,12 +96,135 @@ graph TD
 
 ---
 
+## Board Auto-Detection & Compiler Macros
+
+`tinyISB` is designed for **zero-touch cross-compilation**. You do not need to manually change header files, pass compiler flags, or modify source code when switching between Raspberry Pi Pico, ESP32, or Arduino Nano 33 BLE; the underlying toolchain defines target macros automatically.
+
+### Universal Cross-Platform Header Pattern
+
+All library sketches use the following preprocessor header dispatch:
+
+```cpp
+#include <Arduino.h>
+
+#if defined(ARDUINO_ARDUINO_NANO33BLE)
+  #include <TensorFlowLite.h>
+#else
+  #include <tensorflow-runtime-universal.h>
+#endif
+
+#include <tinyISB.h>
+```
+
+- When compiling for the **Arduino Nano 33 BLE**, the official Mbed core defines `ARDUINO_ARDUINO_NANO33BLE`, linking `<TensorFlowLite.h>`.
+- When compiling for **Raspberry Pi Pico (RP2040 / RP2350)** or **Espressif ESP32 (ESP32-S3 / ESP32-C6)**, the `#else` branch executes automatically, linking `<tensorflow-runtime-universal.h>`.
+- In addition, [`src/core/Engine.h`](src/core/Engine.h) internally checks `defined(ESP32)` to automatically bind `tinyisb::internal::UniversalOpResolver` for Xtensa/RISC-V targets or `tflite::AllOpsResolver` for ARM Cortex-M targets without any user configuration.
+
+### Build-Time Resolution Flowchart
+
+```mermaid
+flowchart TD
+    BuildTrigger["Build Trigger (Arduino IDE / arduino-cli / PlatformIO)"]
+    BoardSelect{"Selected Target Board (FQBN)"}
+    BuildTrigger --> BoardSelect
+    
+    BoardSelect -->|Nano 33 BLE| NanoMacro["Macro: ARDUINO_ARDUINO_NANO33BLE"]
+    BoardSelect -->|Pico RP2040 or RP2350| PicoMacro["Macro: ARDUINO_ARCH_RP2040"]
+    BoardSelect -->|ESP32-S3 or ESP32-C6| ESPMacro["Macro: ESP32"]
+
+    subgraph HEADER_RESOLUTION["1. Header Provider Resolution"]
+        NanoMacro --> IncOfficial["#include <TensorFlowLite.h>"]
+        PicoMacro & ESPMacro --> IncUniv["#include <tensorflow-runtime-universal.h>"]
+    end
+
+    subgraph RESOLVER_RESOLUTION["2. tinyISB OpResolver Selection (Engine.h)"]
+        ESPMacro -->|defined ESP32| ResESP["UniversalOpResolver (MicroMutableOpResolver: Xtensa / RISC-V)"]
+        PicoMacro & NanoMacro -->|ARM Cortex-M| ResARM["tflite::AllOpsResolver (Full Kernel Suite)"]
+    end
+
+    subgraph RUNTIME_EXECUTION["3. Zero-Allocation Inference Engine"]
+        ResESP & ResARM --> MicroInterp["tflite::MicroInterpreter::AllocateTensors()"]
+        IncOfficial & IncUniv --> MicroInterp
+        MicroInterp --> ZeroHeapInference["Predict / Predict_Proba Execution"]
+    end
+```
+
+### Compiler Macros & Target Specifications
+
+| Target Board | Architecture & Core | Predefined Compiler Macros | Arduino CLI FQBN (`-b`) | PlatformIO Board ID | Internal OpResolver |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Raspberry Pi Pico** | ARM Cortex-M0+ (`rp2040:rp2040`) | `ARDUINO_ARCH_RP2040`, `PICO_RP2040` | `rp2040:rp2040:rpipico` | `pico` | `tflite::AllOpsResolver` |
+| **Raspberry Pi Pico 2** | ARM Cortex-M33 (`rp2040:rp2040`) | `ARDUINO_ARCH_RP2040`, `PICO_RP2350` | `rp2040:rp2040:rpipico2` | `pico` | `tflite::AllOpsResolver` |
+| **ESP32-S3 Dev Module** | Xtensa LX7 (`esp32:esp32`) | `ESP32`, `CONFIG_IDF_TARGET_ESP32S3` | `esp32:esp32:esp32s3` | `esp32-s3-devkitc-1` | `UniversalOpResolver` |
+| **ESP32-C6 Dev Module** | 32-bit RISC-V (`esp32:esp32`) | `ESP32`, `CONFIG_IDF_TARGET_ESP32C6` | `esp32:esp32:esp32c6` | `esp32-c6-devkitc-1` | `UniversalOpResolver` |
+| **Arduino Nano 33 BLE Sense** | ARM Cortex-M4F (`arduino:mbed_nano`) | `ARDUINO_ARDUINO_NANO33BLE`, `TARGET_NRF52840` | `arduino:mbed_nano:nano33ble` | `nano33ble` | `tflite::AllOpsResolver` |
+
+### How to Select the Board Across Environments
+
+#### 1. Arduino IDE (Graphical Interface)
+Navigate to **Tools** → **Board** and select your model:
+- **Raspberry Pi Pico / Pico 2**: `Raspberry Pi RP2040 Boards` → `Raspberry Pi Pico` (or `Pico 2`).
+- **ESP32-S3 / ESP32-C6**: `esp32` → `ESP32S3 Dev Module` (or `ESP32C6 Dev Module`).
+- **Arduino Nano 33 BLE**: `Arduino Mbed OS Nano Boards` → `Arduino Nano 33 BLE`.
+
+The IDE injects the correct `-D` preprocessor flags automatically upon clicking **Verify** or **Upload**.
+
+#### 2. Arduino CLI (Command Line Interface)
+Pass the target Fully Qualified Board Name (FQBN) via the `-b` flag:
+```bash
+# Raspberry Pi Pico (RP2040)
+arduino-cli compile -b rp2040:rp2040:rpipico examples/BasicClassification
+
+# Raspberry Pi Pico 2 (RP2350 Cortex-M33)
+arduino-cli compile -b rp2040:rp2040:rpipico2 examples/BasicClassification
+
+# ESP32-S3 (Xtensa LX7)
+arduino-cli compile -b esp32:esp32:esp32s3 examples/BasicClassification
+
+# ESP32-C6 (RISC-V)
+arduino-cli compile -b esp32:esp32:esp32c6 examples/BasicClassification
+
+# Arduino Nano 33 BLE Sense (nRF52840 Cortex-M4F)
+arduino-cli compile -b arduino:mbed_nano:nano33ble examples/BasicClassification
+```
+
+#### 3. PlatformIO (`platformio.ini`)
+Specify target environments inside your `platformio.ini`:
+```ini
+[env:rpipico]
+platform = raspberrypi
+board = pico
+framework = arduino
+lib_deps = tinyISB
+
+[env:esp32s3]
+platform = espressif32
+board = esp32-s3-devkitc-1
+framework = arduino
+lib_deps = tinyISB
+
+[env:nano33ble]
+platform = nordicnrf52
+board = nano33ble
+framework = arduino
+lib_deps = tinyISB
+```
+
+---
+
 ## Quick Start (Arduino C++)
 
 ### 1. Classification (`tinyisb::Classifier`)
 
 ```cpp
 #include <Arduino.h>
+
+#if defined(ARDUINO_ARDUINO_NANO33BLE)
+  #include <TensorFlowLite.h>
+#else
+  #include <tensorflow-runtime-universal.h>
+#endif
+
 #include <tinyISB.h>
 #include "model_data.h"
 
@@ -139,6 +271,13 @@ void loop() {
 
 ```cpp
 #include <Arduino.h>
+
+#if defined(ARDUINO_ARDUINO_NANO33BLE)
+  #include <TensorFlowLite.h>
+#else
+  #include <tensorflow-runtime-universal.h>
+#endif
+
 #include <tinyISB.h>
 #include "regressor_model_data.h"
 
