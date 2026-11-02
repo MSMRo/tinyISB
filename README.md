@@ -30,6 +30,7 @@ $$
 $$
 y = (q - \text{zero\_point}) \times \text{scale}
 $$
+
 4. **Cross-Platform Compatibility**:
    - **Raspberry Pi Pico (RP2040)**: Dual Cortex-M0+ @ 133 MHz.
    - **Raspberry Pi Pico 2 (RP2350)**: Dual Cortex-M33 with ARMv8-M DSP & FPU @ 150 MHz.
