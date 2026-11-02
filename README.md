@@ -38,7 +38,7 @@ $$
    - **Arduino Nano 33 BLE Sense**: Nordic nRF52840 Cortex-M4F @ 64 MHz.
 5. **Python Model Pipeline with `uv`**:
    - Complete pipeline supporting PyTorch, NeuroKit2, and TensorFlow Lite.
-   - Includes **Knowledge Distillation** (Recurrent BiLSTM Teacher $\to$ Compact Student DNN) and full INT8 post-training quantization.
+   - Includes **Knowledge Distillation** (Recurrent BiLSTM Teacher → Compact Student DNN) and full INT8 post-training quantization.
 
 ---
 
@@ -172,18 +172,18 @@ The library includes four comprehensive, production-grade examples covering diff
 
 | Example | Task / Domain | Model Architecture | Input Shape | Model Flash | Tensor Arena RAM | Measured Latency (RP2040) |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| [**BasicClassification**](file:///e:/PROJECTS/tinyISB/examples/BasicClassification/BasicClassification.ino) | Multi-Class Sensory State | Dense MLP (4 $\to$ 16 $\to$ 8 $\to$ 3) | `[1, 4]` | 2,864 B | 4 KB | ~0.42 ms |
-| [**ECGArrhythmiaClassifier**](file:///e:/PROJECTS/tinyISB/examples/ECGArrhythmiaClassifier/ECGArrhythmiaClassifier.ino) | 1D-CNN Cardiac Arrhythmia | Conv1D + MaxPool + GAP + Dense | `[1, 128, 1]` | 5,616 B | 10 KB | ~3.18 ms |
-| [**EMGGestureClassifier**](file:///e:/PROJECTS/tinyISB/examples/EMGGestureClassifier/EMGGestureClassifier.ino) | Distilled sEMG Hand Gestures | Distilled Student MLP (64 $\to$ 32 $\to$ 16 $\to$ 4) | `[1, 64]` | 3,968 B | 6 KB | ~0.85 ms |
-| [**SignalRegressor**](file:///e:/PROJECTS/tinyISB/examples/SignalRegressor/SignalRegressor.ino) | Continuous Bio-Telemetry | Regression MLP (6 $\to$ 20 $\to$ 12 $\to$ 1) | `[1, 6]` | 2,528 B | 4 KB | ~0.38 ms |
+| [**BasicClassification**](examples/BasicClassification/BasicClassification.ino) | Multi-Class Sensory State | Dense MLP (4 → 16 → 8 → 3) | `[1, 4]` | 2,864 B | 4 KB | ~0.42 ms |
+| [**ECGArrhythmiaClassifier**](examples/ECGArrhythmiaClassifier/ECGArrhythmiaClassifier.ino) | 1D-CNN Cardiac Arrhythmia | Conv1D + MaxPool + GAP + Dense | `[1, 128, 1]` | 5,616 B | 10 KB | ~3.18 ms |
+| [**EMGGestureClassifier**](examples/EMGGestureClassifier/EMGGestureClassifier.ino) | Distilled sEMG Hand Gestures | Distilled Student MLP (64 → 32 → 16 → 4) | `[1, 64]` | 3,968 B | 6 KB | ~0.85 ms |
+| [**SignalRegressor**](examples/SignalRegressor/SignalRegressor.ino) | Continuous Bio-Telemetry | Regression MLP (6 → 20 → 12 → 1) | `[1, 6]` | 2,528 B | 4 KB | ~0.38 ms |
 
 ---
 
 ### 1. BasicClassification: Tabular Sensory State Classifier
 
-**Location**: [`examples/BasicClassification/BasicClassification.ino`](file:///e:/PROJECTS/tinyISB/examples/BasicClassification/BasicClassification.ino)  
-**Trained Header**: [`examples/BasicClassification/model_data.h`](file:///e:/PROJECTS/tinyISB/examples/BasicClassification/model_data.h)  
-**Training Pipeline**: [`python/01_train_dnn_basic.py`](file:///e:/PROJECTS/tinyISB/python/01_train_dnn_basic.py)
+**Location**: [`examples/BasicClassification/BasicClassification.ino`](examples/BasicClassification/BasicClassification.ino)  
+**Trained Header**: [`examples/BasicClassification/model_data.h`](examples/BasicClassification/model_data.h)  
+**Training Pipeline**: [`python/01_train_dnn_basic.py`](python/01_train_dnn_basic.py)
 
 #### Problem Formulation & Architecture
 Designed for multi-modal sensor fusion (e.g., IMU motion state, ambient environmental monitoring, or predictive industrial vibration). The model ingests a 4-dimensional normalized sensor feature vector and outputs probabilities across 3 discrete operational states (e.g. *Normal*, *Warning*, *Fault*).
@@ -262,9 +262,9 @@ void loop() {
 
 ### 2. ECGArrhythmiaClassifier: 1D-CNN Biosignal Edge Inference
 
-**Location**: [`examples/ECGArrhythmiaClassifier/ECGArrhythmiaClassifier.ino`](file:///e:/PROJECTS/tinyISB/examples/ECGArrhythmiaClassifier/ECGArrhythmiaClassifier.ino)  
-**Trained Header**: [`examples/ECGArrhythmiaClassifier/ecg_model_data.h`](file:///e:/PROJECTS/tinyISB/examples/ECGArrhythmiaClassifier/ecg_model_data.h)  
-**Training Pipeline**: [`python/02_train_ecg_1dcnn.py`](file:///e:/PROJECTS/tinyISB/python/02_train_ecg_1dcnn.py)
+**Location**: [`examples/ECGArrhythmiaClassifier/ECGArrhythmiaClassifier.ino`](examples/ECGArrhythmiaClassifier/ECGArrhythmiaClassifier.ino)  
+**Trained Header**: [`examples/ECGArrhythmiaClassifier/ecg_model_data.h`](examples/ECGArrhythmiaClassifier/ecg_model_data.h)  
+**Training Pipeline**: [`python/02_train_ecg_1dcnn.py`](python/02_train_ecg_1dcnn.py)
 
 #### Problem Formulation & Biosignal Context
 Electrocardiography (ECG) records cardiac bio-potentials reflecting atrial and ventricular depolarization/repolarization cycles. Early detection of arrhythmias directly on wearable edge devices (e.g. Holter monitors, smart patches) demands real-time convolutional feature extraction while preserving battery life:
@@ -279,10 +279,10 @@ Electrocardiography (ECG) records cardiac bio-potentials reflecting atrial and v
 Rather than relying on brittle heuristic peak detection (Pan-Tompkins), a 1D-CNN learns hierarchical temporal morphologies:
 1. `Input`: Shape `(1, 128, 1)` INT8.
 2. `Conv1D`: 8 filters, kernel size 5, stride 1, padding 'same', ReLU activation. Detects sharp QRS transitions.
-3. `MaxPool1D`: Pool size 2, stride 2 $\to$ reduces temporal dimension from 128 to 64 samples.
+3. `MaxPool1D`: Pool size 2, stride 2 → reduces temporal dimension from 128 to 64 samples.
 4. `Conv1D`: 16 filters, kernel size 3, stride 1, padding 'same', ReLU activation. Extracts higher-order ST-segment elevation/depression patterns.
-5. `GlobalAveragePooling1D`: Condenses temporal dimension `(1, 64, 16)` $\to$ `(1, 16)` feature vector, eliminating dense layer parameter explosion.
-6. `Dense`: 16 inputs $\to$ 3 outputs with Softmax classification.
+5. `GlobalAveragePooling1D`: Condenses temporal dimension `(1, 64, 16)` → `(1, 16)` feature vector, eliminating dense layer parameter explosion.
+6. `Dense`: 16 inputs → 3 outputs with Softmax classification.
 
 ```mermaid
 flowchart TD
@@ -326,15 +326,15 @@ flowchart TD
 
 ### 3. EMGGestureClassifier: BiLSTM Knowledge Distillation to Micro-DNN
 
-**Location**: [`examples/EMGGestureClassifier/EMGGestureClassifier.ino`](file:///e:/PROJECTS/tinyISB/examples/EMGGestureClassifier/EMGGestureClassifier.ino)  
-**Trained Header**: [`examples/EMGGestureClassifier/emg_model_data.h`](file:///e:/PROJECTS/tinyISB/examples/EMGGestureClassifier/emg_model_data.h)  
-**Training Pipeline**: [`python/03_train_emg_knowledge_distillation.py`](file:///e:/PROJECTS/tinyISB/python/03_train_emg_knowledge_distillation.py)
+**Location**: [`examples/EMGGestureClassifier/EMGGestureClassifier.ino`](examples/EMGGestureClassifier/EMGGestureClassifier.ino)  
+**Trained Header**: [`examples/EMGGestureClassifier/emg_model_data.h`](examples/EMGGestureClassifier/emg_model_data.h)  
+**Training Pipeline**: [`python/03_train_emg_knowledge_distillation.py`](python/03_train_emg_knowledge_distillation.py)
 
 #### Problem Formulation & The TinyML Recurrent Bottleneck
 Surface Electromyography (sEMG) captures motor unit action potentials (MUAP) from forearm muscles to classify hand gestures for active prosthetics and human-machine interfaces.
 Recurrent Neural Networks (LSTM, BiLSTM) achieve state-of-the-art accuracy on temporal gesture dynamics, but are **unsuited for resource-constrained microcontrollers** due to:
 - Complex recurrent state caching ($c_t, h_t$) demanding persistent RAM buffers.
-- Large weight matrices causing high Flash memory consumption ($> 300\text{ KB}$).
+- Large weight matrices causing high Flash memory consumption (> 300 KB).
 - Sequential step execution preventing efficient vectorization and increasing inference latency.
 
 #### Knowledge Distillation Paradigm (Hinton et al.)
@@ -342,7 +342,11 @@ To overcome this limitation, tinyISB implements an offline **Teacher-to-Student 
 1. **Teacher Model (Heavy Server GPU)**: A deep `Conv1D + Bidirectional LSTM (64 units, 2 layers, ~80k parameters)` trained on synthetic sEMG bursts simulated with `neurokit2` at 500 Hz.
 2. **Student Model (Deployed on MCU)**: A compact feed-forward MLP (`64 -> 32 -> 16 -> 4`, ~2,800 parameters).
 3. **Distillation Objective**: The student is trained not only on hard ground-truth labels, but matches the "dark knowledge" soft probability distribution generated by the teacher at temperature $T = 3.5$:
-   $$\mathcal{L}_{\text{total}} = \alpha \cdot T^2 \cdot \mathcal{D}_{\text{KL}}\left(\sigma\left(\frac{z_s}{T}\right) \parallel \sigma\left(\frac{z_t}{T}\right)\right) + (1 - \alpha) \cdot \mathcal{L}_{\text{CE}}(y, \sigma(z_s))$$
+
+$$
+\mathcal{L}_{\text{distill}} = \alpha \cdot T^2 \cdot \mathcal{D}_{\mathrm{KL}}\left(\sigma\left(\frac{z_s}{T}\right) \parallel \sigma\left(\frac{z_t}{T}\right)\right) + (1 - \alpha) \cdot \mathcal{L}_{\mathrm{CE}}(y, \sigma(z_s))
+$$
+
    where $\alpha = 0.70$, transferring rich cross-class correlation representations to the student.
 
 ```mermaid
@@ -365,7 +369,7 @@ flowchart TD
         end
 
         LossCalc["Distillation Loss: Alpha * T^2 * KL_Divergence + (1 - Alpha) * CrossEntropy"]
-        T_Head -->|Soft Targets (T=3.5)| LossCalc
+        T_Head -->|Soft Targets T=3.5| LossCalc
         S_Out -->|Student Logits| LossCalc
         LossCalc -->|Backpropagate Gradients| STUDENT
         EMGSim --> TEACHER
@@ -407,9 +411,9 @@ The student achieves **98.2% of the Teacher's classification accuracy** while re
 
 ### 4. SignalRegressor: Continuous Bio-Signal Parameter Estimation
 
-**Location**: [`examples/SignalRegressor/SignalRegressor.ino`](file:///e:/PROJECTS/tinyISB/examples/SignalRegressor/SignalRegressor.ino)  
-**Trained Header**: [`examples/SignalRegressor/regressor_model_data.h`](file:///e:/PROJECTS/tinyISB/examples/SignalRegressor/regressor_model_data.h)  
-**Training Pipeline**: [`python/04_train_signal_regressor.py`](file:///e:/PROJECTS/tinyISB/python/04_train_signal_regressor.py)
+**Location**: [`examples/SignalRegressor/SignalRegressor.ino`](examples/SignalRegressor/SignalRegressor.ino)  
+**Trained Header**: [`examples/SignalRegressor/regressor_model_data.h`](examples/SignalRegressor/regressor_model_data.h)  
+**Training Pipeline**: [`python/04_train_signal_regressor.py`](python/04_train_signal_regressor.py)
 
 #### Problem Formulation & Continuous Estimation
 Classification models predict discrete states, but many clinical, industrial, and biomechanical systems require **continuous scalar parameter estimation** (e.g. continuous respiration rate in Breaths Per Minute, muscular contraction force in Newtons, or joint angle in degrees).
@@ -418,7 +422,10 @@ Classification models predict discrete states, but many clinical, industrial, an
 - Ingests a multi-variate feature vector (6 continuous metrics derived from bio-signals such as spectral centroid, signal envelope, mean absolute value, zero-crossing rate, and RMS amplitude).
 - Predicts continuous real-world values without requiring post-processing or external calibration polynomial fits.
 - Seamlessly performs **INT8 output de-quantization** using the model's output tensor zero-point and scale parameters:
-  $$\hat{y} = (q_{\text{out}} - \text{zero\_point}_{\text{out}}) \times \text{scale}_{\text{out}}$$
+
+$$
+\hat{y} = (q_{\mathrm{out}} - \text{zero-point}) \times \text{scale}
+$$
 
 ```mermaid
 flowchart LR
