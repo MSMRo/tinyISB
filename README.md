@@ -666,6 +666,31 @@ python tools/export_to_tinyisb.py \
 
 ---
 
+## Interactive Web Documentation (GitHub Pages)
+
+The repository includes a comprehensive, responsive web documentation portal styled after **ARM CMSIS-DSP (`arm_math`)**, located in the [`docs/`](docs/) folder. It features:
+- **Full API Syntax Reference**: Directional parameter tables (`[in]`, `[out]`, `[in,out]`), return values, memory complexity ($O(1)$ dynamic heap), preconditions, and copyable C++ snippets for each class and method (`Classifier`, `Regressor`, `Engine`, `Status`).
+- **Interactive Search Bar**: Real-time filtering with `/` or `Ctrl+K` shortcut across classes, methods, and topics.
+- **Dark & Light Mode**: Automatic preference detection with a persistent toggle.
+- **Hardware & Macro Specification**: Complete FQBN matrix and PlatformIO configurations.
+
+### Deploying to GitHub Pages
+
+To publish the documentation site via GitHub Pages:
+1. In your GitHub repository, navigate to **Settings** → **Pages**.
+2. Under **Build and deployment** → **Source**, select **Deploy from a branch**.
+3. Under **Branch**, select `main` and choose the `/docs` folder from the dropdown.
+4. Click **Save**. GitHub Pages will deploy your documentation portal automatically (e.g. `https://<username>.github.io/tinyISB/`).
+
+### Local Preview
+Open [`docs/index.html`](docs/index.html) directly in any web browser, or launch a lightweight local server:
+```bash
+python -m http.server -d docs 8000
+```
+Navigate to `http://localhost:8000`.
+
+---
+
 ## License
 
 MIT License. Designed for embedded systems, edge computing, and TinyML applications.
